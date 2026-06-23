@@ -41,11 +41,7 @@ jobs:
       - name: Locate installed SDK path
         id: sdk_path
         run: |
-          # Find the actual installed version directory
           VERSION_DIR=$(ls -d ~/.arduino15/packages/esp8266/hardware/esp8266/*/ 2>/dev/null | head -1)
-          if [ -z "$VERSION_DIR" ]; then
-            VERSION_DIR=$(ls -d ~/.arduino15/packages/esp8266/hardware/esp8266/*/ 2>/dev/null | head -1)
-          fi
           echo "SDK version dir: $VERSION_DIR"
           SDK_INCLUDE="${VERSION_DIR}tools/sdk/include"
           echo "sdk_include=$SDK_INCLUDE" >> $GITHUB_OUTPUT
@@ -54,42 +50,14 @@ jobs:
       - name: Apply SDK patch (user_interface.h)
         run: |
           SDK_INCLUDE="${{ steps.sdk_path.outputs.sdk_include }}"
-          echo "Patching $SDK_INCLUDE/user_interface.h"
           cp arduino/sdk_fix/user_interface.h "$SDK_INCLUDE/user_interface.h"
-          echo "Patched successfully"
 
       - name: Apply SDK patch (ESP8266WiFi library)
         run: |
           VERSION_DIR="${{ steps.sdk_path.outputs.version_dir }}"
           WIFI_LIB="${VERSION_DIR}libraries/ESP8266WiFi/src"
-          echo "Replacing ESP8266WiFi library in $WIFI_LIB"
           cp arduino/sdk_fix/ESP8266WiFi.cpp "$WIFI_LIB/ESP8266WiFi.cpp"
           cp arduino/sdk_fix/ESP8266WiFi.h "$WIFI_LIB/ESP8266WiFi.h"
-          echo "Replaced successfully"
-
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.0'
-
-      - name: Install Jekyll dependencies
-        run: |
-          gem install bundler
-          bundle install
-        working-directory: web_server/html
-
-      - name: Build web assets with Jekyll
-        run: bundle exec jekyll build
-        working-directory: web_server/html
-
-      - name: Debug - list output files
-        run: find web_server/output/html -maxdepth 3 -type f | sort
-
-      - name: Generate data.h from web assets
-        run: |
-          python3 web_server/generate_data_h.py \
-            web_server/output/html \
-            arduino/Wi-PWN/data.h
 
       - name: Compile firmware
         run: |
