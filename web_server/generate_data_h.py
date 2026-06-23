@@ -25,7 +25,7 @@ def generate_data_h(input_dir, output_path):
     with open(output_path, 'w', encoding='utf-8') as out:
         out.write('// Auto-generated from web assets - DO NOT EDIT BY HAND\n')
         out.write(f'// Source: {input_dir}\n\n')
-        out.write('#include <avr/pgmspace.h>\n\n')
+        out.write('#include <pgmspace.h>\n\n')
 
         for fpath in files:
             rel = os.path.relpath(fpath, input_dir)
