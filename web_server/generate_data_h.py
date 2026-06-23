@@ -5,7 +5,8 @@ Usage:
   python web_server/generate_data_h.py <input_dir> <output_file>
 
 Where <input_dir> is the Jekyll output directory (e.g., web_server/output/html/).
-Generates a C header file with gzip-compressed PROGMEM byte arrays suitable for ESP8266 firmware.
+Processes ONLY root-level files (not language subdirectories) and preserves the
+existing data.h preamble (header guard, includes, variable declarations).
 """
 
 import os
@@ -13,24 +14,65 @@ import sys
 import gzip
 
 def generate_data_h(input_dir, output_path):
+    # Collect root-level files only (skip subdirectories = other languages)
     files = []
-    for root, dirs, filenames in os.walk(input_dir):
-        for f in sorted(filenames):
-            full = os.path.join(root, f)
-            # Skip hidden files and non-web files
-            if f.startswith('.') or f.endswith('.map') or f.endswith('.json'):
-                continue
-            files.append(full)
+    for f in sorted(os.listdir(input_dir)):
+        full = os.path.join(input_dir, f)
+        if not os.path.isfile(full):
+            continue
+        if f.startswith('.') or f.endswith('.map') or f.endswith('.json'):
+            continue
+        files.append(full)
 
+    # Read existing data.h preamble (everything up to and including /*auto_generator*/)
+    # If file doesn't exist yet, generate minimal preamble
+    preamble = ''
+    if os.path.exists(output_path):
+        with open(output_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        idx = content.find('/*auto_generator*/')
+        if idx != -1:
+            preamble = content[:idx] + '/*auto_generator*/\n'
+        else:
+            # Include up to the first const declaration
+            idx = content.find('const char ')
+            if idx != -1:
+                preamble = content[:idx]
+            else:
+                preamble = content
+    else:
+        preamble = (
+            '#ifndef data_h\n'
+            '#define data_h\n'
+            '#include "Settings.h"\n'
+            '\n'
+            'extern Settings settings;\n'
+            '\n'
+            'static uint8_t data_macBuffer;\n'
+            'static char data_vendorBuffer;\n'
+            'static String data_vendorStrBuffer = "";\n'
+            '\n'
+            '#define bufSize 2000\n'
+            'int bufc = 0;\n'
+            '\n'
+            'char data_websiteBuffer[bufSize];\n'
+            '\n'
+            '/*\n'
+            '  PROGMEM storage for web assets.\n'
+            '  Auto-generated - do not edit by hand.\n'
+            '*/\n'
+            '\n'
+            '/*auto_generator*/\n'
+        )
+
+    # Write output
     with open(output_path, 'w', encoding='utf-8') as out:
-        out.write('// Auto-generated from web assets - DO NOT EDIT BY HAND\n')
-        out.write(f'// Source: {input_dir}\n\n')
-        out.write('#include <pgmspace.h>\n\n')
+        out.write(preamble)
 
         for fpath in files:
-            rel = os.path.relpath(fpath, input_dir)
-            # Convert path to C identifier
-            name = rel.replace('\\', '/').replace('/', '_').replace('.', '_').upper()
+            fname = os.path.basename(fpath)
+            # Convert filename to C identifier
+            name = fname.replace('.', '_').upper()
             c_name = f'data_{name}'
 
             # Read and gzip compress
@@ -48,7 +90,7 @@ def generate_data_h(input_dir, output_path):
 
         out.write('/*end_auto_generator*/\n')
 
-    print(f'Generated {output_path} with {len(files)} files from {input_dir}')
+    print(f'Generated {output_path} with {len(files)} root-level files from {input_dir}')
     return len(files)
 
 
