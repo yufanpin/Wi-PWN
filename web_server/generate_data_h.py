@@ -12,28 +12,37 @@ existing data.h preamble (header guard, includes, variable declarations).
 import os
 import sys
 import gzip
-
-# Language subdirectory names to skip (these are translations, not root assets)
-LANGUAGE_DIRS = {
-    'english', 'german', 'russian', 'italian', 'dutch', 'portuguese',
-    'slovak', 'polish', 'estonian', 'hebrew', 'czech', 'turkish', 'indonesia',
-}
+from os.path import join, isdir
 
 def generate_data_h(input_dir, output_path):
-    # Collect all files recursively, skipping language subdirectories.
-    # Use basename only for C variable names (so js/attack.js -> data_attack_JS).
-    files = []  # list of (basename, full_path)
-    seen_names = set()
-    for root, dirs, filenames in os.walk(input_dir):
-        # Skip language subdirectories in-place
-        dirs[:] = [d for d in dirs if d not in LANGUAGE_DIRS]
-        for f in sorted(filenames):
-            if f.startswith('.') or f.endswith('.map') or f.endswith('.json'):
+    # Collect files matching auto_generate.exe behavior:
+    #   - .html and .css from root level only
+    #   - .js from js/ subdirectory only
+    # This matches the original Node.js auto_generate.exe which does:
+    #   fs.readdir(output/html) -> .html + .css (root level)
+    #   fs.readdir(output/html/js) -> .js (js/ subdir)
+    files = []
+    root_dir = input_dir
+    js_dir = join(input_dir, 'js')
+    
+    # Root level: .html and .css
+    if isdir(root_dir):
+        for f in sorted(os.listdir(root_dir)):
+            full = join(root_dir, f)
+            if not os.path.isfile(full):
                 continue
-            full = os.path.join(root, f)
-            # Use basename (not relative path) so js/attack.js -> attack.js
-            if f not in seen_names:
-                seen_names.add(f)
+            ext = f.rsplit('.', 1)[-1].lower() if '.' in f else ''
+            if ext in ('html', 'css'):
+                files.append(full)
+    
+    # js/ subdirectory: .js
+    if isdir(js_dir):
+        for f in sorted(os.listdir(js_dir)):
+            full = join(js_dir, f)
+            if not os.path.isfile(full):
+                continue
+            ext = f.rsplit('.', 1)[-1].lower() if '.' in f else ''
+            if ext == 'js':
                 files.append(full)
 
     # Read existing data.h to extract:
@@ -89,9 +98,17 @@ def generate_data_h(input_dir, output_path):
 
         for fpath in files:
             fname = os.path.basename(fpath)
-            # Convert filename to C identifier
-            name = fname.replace('.', '_').upper()
-            c_name = f'data_{name}'
+            # Convert filename to C identifier matching auto_generate.exe convention:
+            #   extension = UPPERCASE, filename = lowercase
+            #   e.g. main.css -> data_main_CSS, 404.html -> data_404_HTML
+            parts = fname.rsplit('.', 1)
+            if len(parts) == 2:
+                file_part = parts[0].lower()
+                ext_part = parts[1].upper()
+            else:
+                file_part = parts[0].lower()
+                ext_part = ''
+            c_name = f'data_{file_part}_{ext_part}'
 
             # Read and gzip compress
             with open(fpath, 'rb') as f:
