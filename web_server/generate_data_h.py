@@ -24,22 +24,28 @@ def generate_data_h(input_dir, output_path):
             continue
         files.append(full)
 
-    # Read existing data.h preamble (everything up to and including /*auto_generator*/)
-    # If file doesn't exist yet, generate minimal preamble
+    # Read existing data.h to extract:
+    # 1. preamble - everything up to and including /*auto_generator*/
+    # 2. postamble - everything from /*end_auto_generator*/ onward (vendor list, #endif)
     preamble = ''
+    postamble = '\n/*end_auto_generator*/\n\n#endif\n'
     if os.path.exists(output_path):
         with open(output_path, 'r', encoding='utf-8') as f:
             content = f.read()
+        # Preamble: everything up to /*auto_generator*/
         idx = content.find('/*auto_generator*/')
         if idx != -1:
             preamble = content[:idx] + '/*auto_generator*/\n'
         else:
-            # Include up to the first const declaration
             idx = content.find('const char ')
             if idx != -1:
                 preamble = content[:idx]
             else:
                 preamble = content
+        # Postamble: everything from /*end_auto_generator*/ onward
+        end_idx = content.find('/*end_auto_generator*/')
+        if end_idx != -1:
+            postamble = content[end_idx:]
     else:
         preamble = (
             '#ifndef data_h\n'
@@ -88,7 +94,7 @@ def generate_data_h(input_dir, output_path):
                 out.write(f'0x{b:02X},')
             out.write('\n};\n\n')
 
-        out.write('/*end_auto_generator*/\n')
+        out.write(postamble)
 
     print(f'Generated {output_path} with {len(files)} root-level files from {input_dir}')
     return len(files)
