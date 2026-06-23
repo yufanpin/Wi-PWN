@@ -13,16 +13,28 @@ import os
 import sys
 import gzip
 
+# Language subdirectory names to skip (these are translations, not root assets)
+LANGUAGE_DIRS = {
+    'english', 'german', 'russian', 'italian', 'dutch', 'portuguese',
+    'slovak', 'polish', 'estonian', 'hebrew', 'czech', 'turkish', 'indonesia',
+}
+
 def generate_data_h(input_dir, output_path):
-    # Collect root-level files only (skip subdirectories = other languages)
-    files = []
-    for f in sorted(os.listdir(input_dir)):
-        full = os.path.join(input_dir, f)
-        if not os.path.isfile(full):
-            continue
-        if f.startswith('.') or f.endswith('.map') or f.endswith('.json'):
-            continue
-        files.append(full)
+    # Collect all files recursively, skipping language subdirectories.
+    # Use basename only for C variable names (so js/attack.js -> data_attack_JS).
+    files = []  # list of (basename, full_path)
+    seen_names = set()
+    for root, dirs, filenames in os.walk(input_dir):
+        # Skip language subdirectories in-place
+        dirs[:] = [d for d in dirs if d not in LANGUAGE_DIRS]
+        for f in sorted(filenames):
+            if f.startswith('.') or f.endswith('.map') or f.endswith('.json'):
+                continue
+            full = os.path.join(root, f)
+            # Use basename (not relative path) so js/attack.js -> attack.js
+            if f not in seen_names:
+                seen_names.add(f)
+                files.append(full)
 
     # Read existing data.h to extract:
     # 1. preamble - everything up to and including /*auto_generator*/
@@ -96,7 +108,7 @@ def generate_data_h(input_dir, output_path):
 
         out.write(postamble)
 
-    print(f'Generated {output_path} with {len(files)} root-level files from {input_dir}')
+    print(f'Generated {output_path} with {len(files)} files from {input_dir}')
     return len(files)
 
 
