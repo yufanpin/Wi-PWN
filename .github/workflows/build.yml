@@ -82,6 +82,9 @@ jobs:
         run: bundle exec jekyll build
         working-directory: web_server/html
 
+      - name: Debug - list output files
+        run: find web_server/output/html -maxdepth 3 -type f | sort
+
       - name: Generate data.h from web assets
         run: |
           python3 web_server/generate_data_h.py \
