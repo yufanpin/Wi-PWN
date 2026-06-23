@@ -1,0 +1,96 @@
+name: Build Firmware
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  BOARD: esp8266:esp8266:nodemcuv2:CpuFrequency=80,FlashSize=4M3M
+  SKETCH: arduino/Wi-PWN/Wi-PWN.ino
+  BOARD_MGR_URL: http://arduino.esp8266.com/stable/package_esp8266com_index.json
+  ESP8266_CORE_VERSION: 2.0.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v1
+
+      - name: Add ESP8266 board manager URL
+        run: |
+          arduino-cli config init
+          arduino-cli config set board_manager.additional_urls "${{ env.BOARD_MGR_URL }}"
+
+      - name: Update core index
+        run: arduino-cli core update-index
+
+      - name: Install ESP8266 core ${{ env.ESP8266_CORE_VERSION }}
+        run: |
+          arduino-cli core install esp8266:esp8266@${{ env.ESP8266_CORE_VERSION }} || {
+            echo "Version $ESP8266_CORE_VERSION not available, installing latest..."
+            arduino-cli core install esp8266:esp8266
+          }
+
+      - name: Locate installed SDK path
+        id: sdk_path
+        run: |
+          # Find the actual installed version directory
+          VERSION_DIR=$(ls -d ~/.arduino15/packages/esp8266/hardware/esp8266/*/ 2>/dev/null | head -1)
+          if [ -z "$VERSION_DIR" ]; then
+            VERSION_DIR=$(ls -d ~/.arduino15/packages/esp8266/hardware/esp8266/*/ 2>/dev/null | head -1)
+          fi
+          echo "SDK version dir: $VERSION_DIR"
+          SDK_INCLUDE="${VERSION_DIR}tools/sdk/include"
+          echo "sdk_include=$SDK_INCLUDE" >> $GITHUB_OUTPUT
+          echo "version_dir=$VERSION_DIR" >> $GITHUB_OUTPUT
+
+      - name: Apply SDK patch (user_interface.h)
+        run: |
+          SDK_INCLUDE="${{ steps.sdk_path.outputs.sdk_include }}"
+          echo "Patching $SDK_INCLUDE/user_interface.h"
+          cp arduino/sdk_fix/user_interface.h "$SDK_INCLUDE/user_interface.h"
+          echo "Patched successfully"
+
+      - name: Apply SDK patch (ESP8266WiFi library)
+        run: |
+          VERSION_DIR="${{ steps.sdk_path.outputs.version_dir }}"
+          WIFI_LIB="${VERSION_DIR}libraries/ESP8266WiFi/src"
+          echo "Replacing ESP8266WiFi library in $WIFI_LIB"
+          cp arduino/sdk_fix/ESP8266WiFi.cpp "$WIFI_LIB/ESP8266WiFi.cpp"
+          cp arduino/sdk_fix/ESP8266WiFi.h "$WIFI_LIB/ESP8266WiFi.h"
+          echo "Replaced successfully"
+
+      - name: Compile firmware
+        run: |
+          arduino-cli compile \
+            --board "${{ env.BOARD }}" \
+            --output-dir "${{ runner.temp }}/build" \
+            "${{ env.SKETCH }}"
+
+      - name: Rename binary
+        run: |
+          mv "${{ runner.temp }}/build/Wi-PWN.ino.bin" \
+             "${{ runner.temp }}/build/Wi-PWN.ino.nodemcu.bin"
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wi-PWN-firmware
+          path: ${{ runner.temp }}/build/Wi-PWN.ino.nodemcu.bin
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload build report
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-report
+          path: ${{ runner.temp }}/build/*.elf
+          compression-level: 0
+          if-no-files-found: warn
