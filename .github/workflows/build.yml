@@ -70,7 +70,7 @@ jobs:
       - name: Compile firmware
         run: |
           arduino-cli compile \
-            --board "${{ env.BOARD }}" \
+            -b "${{ env.BOARD }}" \
             --output-dir "${{ runner.temp }}/build" \
             "${{ env.SKETCH }}"
 
